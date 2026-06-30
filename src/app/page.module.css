@@ -1,0 +1,335 @@
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.btnActive {
+  composes: btn;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.brandPills {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.pill:hover { background: var(--surface-2); }
+
+.pillActive {
+  composes: pill;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.errorBanner {
+  padding: 12px 16px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .kpiRow { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 600px) {
+  .kpiRow { grid-template-columns: repeat(2, 1fr); }
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kpiLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.kpiValue {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.kpiSub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 700px) {
+  .grid2 { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.barRow {
+  display: grid;
+  grid-template-columns: 160px 1fr 40px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.barLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barTrack {
+  height: 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+  min-width: 2px;
+}
+
+.barCount {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: right;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0 12px 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.table td {
+  padding: 12px 12px 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+.table tr:last-child td { border-bottom: none; }
+
+.agentCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.channelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.channelCard {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.channelDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-bottom: 2px;
+}
+
+.channelName {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: capitalize;
+}
+
+.channelCount {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.channelBar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.channelBarFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.badgeOk {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--success-bg);
+  color: var(--success-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badgeWarn {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--warning-bg);
+  color: var(--warning-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badgeDanger {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--danger-bg);
+  color: var(--danger-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.debug {
+  font-size: 11px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  max-height: 400px;
+  overflow-y: auto;
+}
