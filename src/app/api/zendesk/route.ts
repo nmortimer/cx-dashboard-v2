@@ -12,12 +12,22 @@ const NA_BRANDS: Record<string, string> = {
 }
 const NA_BRAND_IDS = Object.keys(NA_BRANDS)
 const NA_DTC_GROUP_ID = '360003109320'
+const EXCLUDED_AGENT_ID = '28767951817234'
+const EXCLUDED_TAGS = 'pro code pro_fjr pro_ha pro_hanwag chargeback pro_rr'
 
-// The exact Zendesk view that defines your backlog
-const DTC_BACKLOG_VIEW_ID = '11310174076050'
+// Hardcoded NA DTC agent list — no group API call needed
+const NA_AGENTS = [
+  { id: '35310781807378', name: 'Bethany Coates',    email: 'bethany.coates@fenixoutdoor.us' },
+  { id: '28096751190418', name: 'Nadia Savard',      email: 'nadia.savard@fenixoutdoor.ca' },
+  { id: '32696113103122', name: 'Christopher Junge', email: 'christopher.junge@fenixoutdoor.us' },
+  { id: '30945503512594', name: 'Michael Lang',      email: 'michael.lang@fenixoutdoor.us' },
+  { id: '370521577940',   name: 'Steve Bailey',      email: 'steve.bailey@fjallraven.us' },
+  { id: '27746093549202', name: 'Tyler Burns',       email: 'tyler.burns@fenixoutdoor.us' },
+  { id: '33019737250322', name: 'Kennedy Just',      email: 'kennedy.just@fenixoutdoor.us' },
+  { id: '8371024885266',  name: 'Janee Howerton',    email: 'janee.howerton@fenixoutdoor.us' },
+]
 
 const FIELD_NA_CATEGORY = 29839585505938
-
 const CATEGORY_LABELS: Record<string, string> = {
   'na_order': 'Order',
   'na_returns_and_exchanges': 'Returns & Exchanges',
@@ -38,43 +48,27 @@ async function zdFetch(path: string) {
   const url = `https://${SUBDOMAIN}.zendesk.com${path}`
   const res = await fetch(url, {
     headers: { 'Authorization': getAuth(), 'Content-Type': 'application/json' },
-    next: { revalidate: 300 }
+    next: { revalidate: 0 }
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`Zendesk API ${res.status} on ${path}: ${body.slice(0, 200)}`)
+    throw new Error(`Zendesk ${res.status} ${path}: ${body.slice(0, 200)}`)
   }
   return res.json()
 }
 
-async function zdSearch(query: string, perPage = 100, page = 1) {
-  const url = `https://${SUBDOMAIN}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}`
+async function zdSearch(query: string, perPage = 1) {
+  const url = `https://${SUBDOMAIN}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=${perPage}`
   const res = await fetch(url, {
     headers: { 'Authorization': getAuth(), 'Content-Type': 'application/json' },
-    next: { revalidate: 300 }
+    next: { revalidate: 0 }
   })
-  if (!res.ok) throw new Error(`Zendesk search ${res.status}`)
+  if (!res.ok) throw new Error(`Search ${res.status}: ${query.slice(0, 80)}`)
   return res.json()
 }
 
-function getCustomField(ticket: any, fieldId: number): any {
-  const field = ticket.custom_fields?.find((f: any) => f.id === fieldId)
-  return field?.value ?? null
-}
-
-function parseTicket(t: any) {
-  const naCategory = getCustomField(t, FIELD_NA_CATEGORY)
-  return {
-    id: t.id,
-    status: t.status,
-    assignee_id: t.assignee_id,
-    brand_id: String(t.brand_id),
-    channel: t.via?.channel || 'unknown',
-    created_at: t.created_at,
-    na_category: naCategory,
-    na_category_label: CATEGORY_LABELS[naCategory] || naCategory || 'Uncategorized',
-    satisfaction_score: t.satisfaction_rating?.score || null,
-  }
+function dtcBacklogQuery(brandId: string) {
+  return `type:ticket status:new status:open status:hold group:${NA_DTC_GROUP_ID} brand_id:${brandId} -tags:"${EXCLUDED_TAGS}" -assignee:${EXCLUDED_AGENT_ID}`
 }
 
 export async function GET(request: NextRequest) {
@@ -92,99 +86,136 @@ export async function GET(request: NextRequest) {
     const sinceStr = since.toISOString().split('T')[0]
 
     const brandIdsToQuery = brandId === 'all' ? NA_BRAND_IDS : [brandId]
+    const brandFilter = brandId !== 'all' ? ` brand_id:${brandId}` : ''
 
-    // 1. DTC backlog count — use the view directly for exact match with Zendesk UI
-    //    View already has all the right filters (group, tag exclusions, excluded assignee, etc.)
-    const [viewCountRes, viewTicketsRes, recentResults, csatResults, agentsRes] = await Promise.all([
-      // Exact backlog count matching your Zendesk view
-      zdFetch(`/api/v2/views/${DTC_BACKLOG_VIEW_ID}/count.json`),
-      // Backlog tickets (up to 100) for category breakdown
-      zdFetch(`/api/v2/views/${DTC_BACKLOG_VIEW_ID}/tickets.json?per_page=100`),
-      // Recent solved tickets per brand for resolved count
+    const [
+      backlogCounts,
+      solvedCounts,
+      closedCounts,
+      csatGoodCounts,
+      csatBadCounts,
+      agentOpenCounts,
+      agentSolvedCounts,
+      agentCsatGood,
+      agentCsatBad,
+    ] = await Promise.all([
       Promise.all(brandIdsToQuery.map(id =>
-        zdSearch(`type:ticket status:solved status:closed brand_id:${id} created>${sinceStr}`, 1, 1)
+        zdSearch(dtcBacklogQuery(id)).then(r => ({ id, count: r.count || 0 }))
       )),
-      // CSAT counts per brand
       Promise.all(brandIdsToQuery.map(id =>
-        Promise.all([
-          zdSearch(`type:ticket brand_id:${id} satisfaction:good created>${sinceStr}`, 1, 1),
-          zdSearch(`type:ticket brand_id:${id} satisfaction:bad created>${sinceStr}`, 1, 1),
-        ]).then(([good, bad]) => ({ good_count: good.count || 0, bad_count: bad.count || 0 }))
+        zdSearch(`type:ticket status:solved brand_id:${id} group:${NA_DTC_GROUP_ID} solved>${sinceStr}`).then(r => r.count || 0)
       )),
-      // Agents in NA DTC group
-      zdFetch(`/api/v2/groups/${NA_DTC_GROUP_ID}/users.json?per_page=100`),
+      Promise.all(brandIdsToQuery.map(id =>
+        zdSearch(`type:ticket status:closed brand_id:${id} group:${NA_DTC_GROUP_ID} solved>${sinceStr}`).then(r => r.count || 0)
+      )),
+      Promise.all(brandIdsToQuery.map(id =>
+        zdSearch(`type:ticket brand_id:${id} group:${NA_DTC_GROUP_ID} satisfaction:good solved>${sinceStr}`).then(r => r.count || 0)
+      )),
+      Promise.all(brandIdsToQuery.map(id =>
+        zdSearch(`type:ticket brand_id:${id} group:${NA_DTC_GROUP_ID} satisfaction:bad solved>${sinceStr}`).then(r => r.count || 0)
+      )),
+      Promise.all(NA_AGENTS.map(a =>
+        zdSearch(`type:ticket status:new status:open status:hold group:${NA_DTC_GROUP_ID} assignee:${a.id}${brandFilter}`).then(r => ({ id: a.id, count: r.count || 0 }))
+      )),
+      Promise.all(NA_AGENTS.map(a =>
+        zdSearch(`type:ticket status:solved status:closed group:${NA_DTC_GROUP_ID} assignee:${a.id} solved>${sinceStr}${brandFilter}`).then(r => ({ id: a.id, count: r.count || 0 }))
+      )),
+      Promise.all(NA_AGENTS.map(a =>
+        zdSearch(`type:ticket group:${NA_DTC_GROUP_ID} assignee:${a.id} satisfaction:good solved>${sinceStr}${brandFilter}`).then(r => ({ id: a.id, count: r.count || 0 }))
+      )),
+      Promise.all(NA_AGENTS.map(a =>
+        zdSearch(`type:ticket group:${NA_DTC_GROUP_ID} assignee:${a.id} satisfaction:bad solved>${sinceStr}${brandFilter}`).then(r => ({ id: a.id, count: r.count || 0 }))
+      )),
     ])
 
-    // Exact backlog count from view
-    const dtcBacklogCount = viewCountRes.view_count?.value || 0
+    const dtcBacklogTotal = backlogCounts.reduce((s, b) => s + b.count, 0)
+    const resolvedTotal = solvedCounts.reduce((a, b) => a + b, 0) + closedCounts.reduce((a, b) => a + b, 0)
+    const csatGoodTotal = csatGoodCounts.reduce((a, b) => a + b, 0)
+    const csatBadTotal = csatBadCounts.reduce((a, b) => a + b, 0)
+    const csatTotal = csatGoodTotal + csatBadTotal
+    const csatRate = csatTotal > 0 ? Math.round((csatGoodTotal / csatTotal) * 100) : null
 
-    // Backlog tickets for breakdowns
-    const backlogTickets = (viewTicketsRes.tickets || []).map(parseTicket)
+    const backlogByBrand = backlogCounts.map(b => ({ name: NA_BRANDS[b.id], open: b.count }))
 
-    // Filter by brand if a specific brand is selected
-    const filteredBacklog = brandId === 'all'
-      ? backlogTickets
-      : backlogTickets.filter((t: any) => t.brand_id === brandId)
+    const openMap: Record<string, number> = {}
+    const solvedMap: Record<string, number> = {}
+    const csatGoodMap: Record<string, number> = {}
+    const csatBadMap: Record<string, number> = {}
+    agentOpenCounts.forEach(a => { openMap[a.id] = a.count })
+    agentSolvedCounts.forEach(a => { solvedMap[a.id] = a.count })
+    agentCsatGood.forEach(a => { csatGoodMap[a.id] = a.count })
+    agentCsatBad.forEach(a => { csatBadMap[a.id] = a.count })
 
-    // Backlog by brand — use per-brand search counts for accuracy
-    const backlogByBrandCounts = await Promise.all(
-      brandIdsToQuery.map(id =>
-        zdSearch(`type:ticket status:new status:open status:hold group:${NA_DTC_GROUP_ID} brand_id:${id} -tags:"pro code" -tags:pro_fjr -tags:pro_ha -tags:pro_hanwag -tags:chargeback -tags:pro_rr`, 1, 1)
-          .then(r => ({ name: NA_BRANDS[id], open: r.count || 0 }))
-      )
+    // Fetch resolution/reply time from recent solved tickets (up to 50)
+    const recentSolvedRes = await zdSearch(
+      `type:ticket group:${NA_DTC_GROUP_ID} status:solved solved>${sinceStr}${brandFilter}`,
+      50
     )
+    const recentTickets: any[] = recentSolvedRes.results || []
 
-    // Resolved totals
-    const resolvedCount = recentResults.reduce((sum, r) => sum + (r.count || 0), 0)
+    const agentFirstReplyMins: Record<string, number[]> = {}
+    const agentResolutionMins: Record<string, number[]> = {}
+    const allFirstReply: number[] = []
+    const allResolution: number[] = []
 
-    // CSAT
-    const csatGood = csatResults.reduce((sum, r) => sum + r.good_count, 0)
-    const csatBad = csatResults.reduce((sum, r) => sum + r.bad_count, 0)
-    const csatTotal = csatGood + csatBad
-    const csatRate = csatTotal > 0 ? Math.round((csatGood / csatTotal) * 100) : null
+    if (recentTickets.length > 0) {
+      const metricsResults = await Promise.all(
+        recentTickets.map((t: any) =>
+          zdFetch(`/api/v2/tickets/${t.id}/metrics.json`).catch(() => null)
+        )
+      )
+      metricsResults.forEach((m: any, i: number) => {
+        if (!m?.ticket_metric) return
+        const metric = m.ticket_metric
+        const assigneeId = String(recentTickets[i]?.assignee_id)
+        const fr = metric.reply_time_in_minutes?.business
+        const res = metric.full_resolution_time_in_minutes?.business
+        if (fr != null && fr > 0) {
+          allFirstReply.push(fr)
+          if (!agentFirstReplyMins[assigneeId]) agentFirstReplyMins[assigneeId] = []
+          agentFirstReplyMins[assigneeId].push(fr)
+        }
+        if (res != null && res > 0) {
+          allResolution.push(res)
+          if (!agentResolutionMins[assigneeId]) agentResolutionMins[assigneeId] = []
+          agentResolutionMins[assigneeId].push(res)
+        }
+      })
+    }
 
-    // Agents
-    const agents = (agentsRes.users || []).filter((u: any) => u.active)
-    const agentStats: Record<string, any> = {}
-    agents.forEach((a: any) => {
-      agentStats[String(a.id)] = { id: String(a.id), name: a.name, email: a.email, open: 0, resolved: 0 }
-    })
+    const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null
 
-    filteredBacklog.forEach((t: any) => {
-      const key = String(t.assignee_id)
-      if (agentStats[key]) agentStats[key].open++
-    })
-
-    // Backlog by category from view tickets
-    const backlogByCategory: Record<string, number> = {}
-    filteredBacklog.forEach((t: any) => {
-      if (t.na_category === 'na_warranty_repair') return // exclude warranty from DTC breakdown
-      const cat = t.na_category_label || 'Uncategorized'
-      backlogByCategory[cat] = (backlogByCategory[cat] || 0) + 1
-    })
-
-    // Channel breakdown from backlog
-    const channelBreakdown: Record<string, number> = {}
-    filteredBacklog.forEach((t: any) => {
-      channelBreakdown[t.channel] = (channelBreakdown[t.channel] || 0) + 1
+    const agents = NA_AGENTS.map(a => {
+      const good = csatGoodMap[a.id] || 0
+      const bad = csatBadMap[a.id] || 0
+      const rated = good + bad
+      return {
+        id: a.id, name: a.name, email: a.email,
+        open: openMap[a.id] || 0,
+        resolved: solvedMap[a.id] || 0,
+        csat_good: good, csat_bad: bad,
+        csat_rate: rated > 0 ? Math.round((good / rated) * 100) : null,
+        avg_first_reply_mins: avg(agentFirstReplyMins[a.id] || []),
+        avg_resolution_mins: avg(agentResolutionMins[a.id] || []),
+      }
     })
 
     return NextResponse.json({
       overview: {
-        backlog_dtc: dtcBacklogCount,  // exact match to Zendesk "DTC New/Open/Hold (No IP)" view
-        resolved_period: resolvedCount,
+        backlog_dtc: dtcBacklogTotal,
+        resolved_period: resolvedTotal,
         csat_rate: csatRate,
-        csat_good: csatGood,
-        csat_bad: csatBad,
+        csat_good: csatGoodTotal,
+        csat_bad: csatBadTotal,
         csat_total: csatTotal,
+        avg_first_reply_mins: avg(allFirstReply),
+        avg_resolution_mins: avg(allResolution),
         days,
         brand_id: brandId,
         fetched_at: new Date().toISOString(),
       },
-      agents: Object.values(agentStats),
-      backlog_by_category: backlogByCategory,
-      backlog_by_brand: backlogByBrandCounts,
-      channel_breakdown: channelBreakdown,
+      agents,
+      backlog_by_brand: backlogByBrand,
     })
   } catch (err: any) {
     console.error('Dashboard error:', err)
