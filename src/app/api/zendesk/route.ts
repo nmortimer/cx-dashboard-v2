@@ -48,7 +48,7 @@ async function zdFetch(path: string) {
   const url = `https://${SUBDOMAIN}.zendesk.com${path}`
   const res = await fetch(url, {
     headers: { 'Authorization': getAuth(), 'Content-Type': 'application/json' },
-    next: { revalidate: 0 }
+    next: { revalidate: 300 }
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
@@ -61,7 +61,7 @@ async function zdSearch(query: string, perPage = 1) {
   const url = `https://${SUBDOMAIN}.zendesk.com/api/v2/search.json?query=${encodeURIComponent(query)}&per_page=${perPage}`
   const res = await fetch(url, {
     headers: { 'Authorization': getAuth(), 'Content-Type': 'application/json' },
-    next: { revalidate: 0 }
+    next: { revalidate: 300 }
   })
   if (!res.ok) throw new Error(`Search ${res.status}: ${query.slice(0, 80)}`)
   return res.json()
