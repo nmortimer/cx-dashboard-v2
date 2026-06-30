@@ -11,22 +11,34 @@ const BRANDS = [
   { id: '360001351360', label: 'Royal Robbins NA' },
 ]
 
+function fmtMins(mins: number | null): string {
+  if (mins == null) return '--'
+  if (mins < 60) return `${mins}m`
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+interface Agent {
+  id: string; name: string; email: string
+  open: number; resolved: number
+  csat_good: number; csat_bad: number; csat_rate: number | null
+  avg_first_reply_mins: number | null
+  avg_resolution_mins: number | null
+}
+
 interface DashData {
   overview: {
     backlog_dtc: number
     resolved_period: number
     csat_rate: number | null
-    csat_good: number
-    csat_bad: number
-    csat_total: number
-    days: number
-    brand_id: string
-    fetched_at: string
+    csat_good: number; csat_bad: number; csat_total: number
+    avg_first_reply_mins: number | null
+    avg_resolution_mins: number | null
+    days: number; brand_id: string; fetched_at: string
   }
-  agents: Array<{ id: string; name: string; email: string; open: number; resolved: number }>
-  backlog_by_category: Record<string, number>
+  agents: Agent[]
   backlog_by_brand: Array<{ name: string; open: number }>
-  channel_breakdown: Record<string, number>
   error?: string
 }
 
@@ -61,20 +73,15 @@ export default function Dashboard() {
 
   const ov = data?.overview
   const agents = [...(data?.agents || [])].sort((a, b) => b.open - a.open)
-  const backlogCats = data?.backlog_by_category || {}
   const backlogBrands = data?.backlog_by_brand || []
-  const channels = data?.channel_breakdown || {}
-
-  const maxCat = Math.max(...Object.values(backlogCats), 1)
   const maxBrand = Math.max(...backlogBrands.map(b => b.open), 1)
-  const maxCh = Math.max(...Object.values(channels), 1)
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>NA CX Dashboard</h1>
-          {lastUpdated && <p className={styles.subtitle}>Updated {lastUpdated}</p>}
+          {lastUpdated && <p className={styles.subtitle}>Updated {lastUpdated}{loading ? ' — refreshing…' : ''}</p>}
         </div>
         <div className={styles.controls}>
           {[7, 30, 90].map(d => (
@@ -96,60 +103,50 @@ export default function Dashboard() {
       <section className={styles.kpiRow}>
         <div className={styles.kpi}>
           <span className={styles.kpiLabel}>DTC Backlog</span>
-          <span className={styles.kpiValue}>{ov?.backlog_dtc ?? '--'}</span>
-          <span className={styles.kpiSub}>matches "DTC New/Open/Hold (No IP)"</span>
+          <span className={styles.kpiValue}>{loading && !ov ? '…' : (ov?.backlog_dtc ?? '--')}</span>
+          <span className={styles.kpiSub}>New + Open + Hold, no IP/Pro</span>
         </div>
         <div className={styles.kpi}>
           <span className={styles.kpiLabel}>Resolved ({ov?.days ?? days}d)</span>
           <span className={styles.kpiValue}>{ov?.resolved_period ?? '--'}</span>
-          <span className={styles.kpiSub}>solved + closed</span>
+          <span className={styles.kpiSub}>solved + closed in period</span>
         </div>
         <div className={styles.kpi}>
           <span className={styles.kpiLabel}>CSAT ({ov?.days ?? days}d)</span>
           <span className={styles.kpiValue}>{ov?.csat_rate != null ? `${ov.csat_rate}%` : '--'}</span>
           <span className={styles.kpiSub}>
-            {ov?.csat_total ? `${ov.csat_good} 👍  ${ov.csat_bad} 👎  of ${ov.csat_total} rated` : 'no ratings yet'}
+            {ov?.csat_total ? `${ov.csat_good} 👍  ${ov.csat_bad} 👎` : 'no ratings yet'}
           </span>
+        </div>
+        <div className={styles.kpi}>
+          <span className={styles.kpiLabel}>Avg First Reply ({ov?.days ?? days}d)</span>
+          <span className={styles.kpiValue}>{fmtMins(ov?.avg_first_reply_mins ?? null)}</span>
+          <span className={styles.kpiSub}>business hours</span>
+        </div>
+        <div className={styles.kpi}>
+          <span className={styles.kpiLabel}>Avg Resolution ({ov?.days ?? days}d)</span>
+          <span className={styles.kpiValue}>{fmtMins(ov?.avg_resolution_mins ?? null)}</span>
+          <span className={styles.kpiSub}>open to close, business hours</span>
         </div>
       </section>
 
-      <div className={styles.grid2}>
-        {/* Backlog by category */}
-        <div className={styles.card}>
-          <h2 className={styles.cardTitle}>Backlog by contact reason <span className={styles.muted}>(excl. warranty)</span></h2>
-          {Object.keys(backlogCats).length === 0
-            ? <p className={styles.muted}>No data</p>
-            : Object.entries(backlogCats)
-                .sort(([, a], [, b]) => b - a)
-                .map(([cat, count]) => (
-                  <div key={cat} className={styles.barRow}>
-                    <span className={styles.barLabel}>{cat}</span>
-                    <div className={styles.barTrack}>
-                      <div className={styles.barFill} style={{ width: `${(count / maxCat) * 100}%` }} />
-                    </div>
-                    <span className={styles.barCount}>{count}</span>
-                  </div>
-                ))}
-        </div>
-
-        {/* Backlog by brand */}
-        <div className={styles.card}>
-          <h2 className={styles.cardTitle}>Backlog by brand</h2>
-          {backlogBrands.map(b => (
-            <div key={b.name} className={styles.barRow}>
-              <span className={styles.barLabel}>{b.name}</span>
-              <div className={styles.barTrack}>
-                <div className={styles.barFill} style={{ width: `${(b.open / maxBrand) * 100}%` }} />
-              </div>
-              <span className={styles.barCount}>{b.open}</span>
+      {/* Backlog by brand */}
+      <div className={styles.card}>
+        <h2 className={styles.cardTitle}>Backlog by brand</h2>
+        {backlogBrands.map(b => (
+          <div key={b.name} className={styles.barRow}>
+            <span className={styles.barLabel}>{b.name}</span>
+            <div className={styles.barTrack}>
+              <div className={styles.barFill} style={{ width: `${(b.open / maxBrand) * 100}%` }} />
             </div>
-          ))}
-        </div>
+            <span className={styles.barCount}>{b.open}</span>
+          </div>
+        ))}
       </div>
 
       {/* Agent table */}
       <div className={styles.card}>
-        <h2 className={styles.cardTitle}>Agent workload</h2>
+        <h2 className={styles.cardTitle}>Agent performance</h2>
         {agents.length === 0
           ? <p className={styles.muted}>No agent data</p>
           : (
@@ -159,6 +156,9 @@ export default function Dashboard() {
                   <th>Agent</th>
                   <th>Open now</th>
                   <th>Resolved ({ov?.days ?? days}d)</th>
+                  <th>CSAT</th>
+                  <th>Avg First Reply</th>
+                  <th>Avg Resolution</th>
                   <th>Load</th>
                 </tr>
               </thead>
@@ -178,6 +178,13 @@ export default function Dashboard() {
                       </td>
                       <td><strong>{a.open}</strong></td>
                       <td>{a.resolved}</td>
+                      <td>
+                        {a.csat_rate != null
+                          ? <span title={`${a.csat_good} good / ${a.csat_bad} bad`}>{a.csat_rate}%</span>
+                          : <span className={styles.muted}>--</span>}
+                      </td>
+                      <td>{fmtMins(a.avg_first_reply_mins)}</td>
+                      <td>{fmtMins(a.avg_resolution_mins)}</td>
                       <td><LoadBadge open={a.open} /></td>
                     </tr>
                   )
@@ -186,24 +193,6 @@ export default function Dashboard() {
             </table>
           )}
       </div>
-
-      {/* Channel breakdown */}
-      {Object.keys(channels).length > 0 && (
-        <div className={styles.card}>
-          <h2 className={styles.cardTitle}>Channel breakdown — current backlog</h2>
-          <div className={styles.channelGrid}>
-            {Object.entries(channels).sort(([, a], [, b]) => b - a).map(([ch, count]) => (
-              <div key={ch} className={styles.channelCard}>
-                <span className={styles.channelName}>{ch}</span>
-                <span className={styles.channelCount}>{count}</span>
-                <div className={styles.channelBar}>
-                  <div className={styles.channelBarFill} style={{ width: `${(count / maxCh) * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
